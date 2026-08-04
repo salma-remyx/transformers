@@ -2,7 +2,7 @@ name: Outrider weekly refine
 
 # Refiner role in the two-tier setup: low-frequency, capable-model
 # commitment. Reviews the past week's drafter output, picks the strongest
-# candidate, generates a targeted gap analysis, and dispatches an Opus
+# candidate, generates a targeted gap analysis, and dispatches a Kimi
 # refinement pass with the gap analysis piped in as lead-content. The
 # refinement's chain (fidelity → convention → test) runs inline; terminal
 # artifact is a ready-for-review draft PR.
@@ -11,7 +11,7 @@ name: Outrider weekly refine
 # selection + spec authorship + dispatch; the refinement itself runs via
 # outrider.yml (mode=recommend + pin-arxiv + start-from-ref + lead-content).
 #
-# Requires ANTHROPIC_API_KEY for the gap-analysis LLM call and the
+# Requires MOONSHOT_API_KEY for the gap-analysis LLM call and the
 # downstream refinement dispatch. Linear connector is optional — this
 # workflow passes the gap analysis inline as raw markdown, no Linear
 # write side needed.
@@ -47,7 +47,7 @@ jobs:
       pull-requests: read   # to check whether candidates are already promoted
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.MOONSHOT_API_KEY }}
     steps:
       - name: Pick candidate from past week's drafter output
         id: pick
@@ -175,7 +175,7 @@ jobs:
                   pass
 
           prompt_body = textwrap.dedent(f"""
-              You are auditing an Outrider-drafted GLM branch against its source paper before an Opus refinement pass. Produce a structured gap-analysis markdown with this shape:
+              You are auditing an Outrider-drafted GLM branch against its source paper before a Kimi refinement pass. Produce a structured gap-analysis markdown with this shape:
 
               * Lead paragraph naming what the branch attempted vs what the paper actually specifies (2-3 sentences)
               * A section per gap: `## Gap N — <short title>` with fields for File (path:line), Current behavior, Paper (arxiv:{arxiv}) specification, and the specific Fix.
@@ -192,9 +192,9 @@ jobs:
               """).strip()
 
           req = urllib.request.Request(
-              "https://api.anthropic.com/v1/messages",
+              "https://api.moonshot.ai/anthropic/v1/messages",
               data=json.dumps({
-                  "model": "claude-sonnet-4-6",
+                  "model": "kimi-k3",
                   "max_tokens": 4096,
                   "messages": [{"role": "user", "content": prompt_body}],
               }).encode(),
@@ -220,7 +220,7 @@ jobs:
             echo 'GAP_EOF'
           } >> "$GITHUB_OUTPUT"
 
-      - name: Dispatch Opus refinement
+      - name: Dispatch Kimi refinement
         if: steps.pick.outputs.picked != '' && steps.gap.outputs.markdown != ''
         env:
           BRANCH: ${{ steps.pick.outputs.picked }}
@@ -232,11 +232,11 @@ jobs:
             --repo "$GITHUB_REPOSITORY" \
             --ref main \
             -f mode=recommend \
-            -f provider=anthropic \
-            -f model=claude-opus-4-8 \
+            -f provider=moonshot \
+            -f model=kimi-k3 \
             -f pin-arxiv="$ARXIV" \
             -f start-from-ref="$BRANCH" \
             -f lead-content="$GAP" \
             -f staged-synthesis=true \
             -f publish=pr
-          echo "→ dispatched Opus refinement on $BRANCH (arxiv:$ARXIV)"
+          echo "→ dispatched Kimi refinement on $BRANCH (arxiv:$ARXIV)"
