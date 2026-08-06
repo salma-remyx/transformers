@@ -1,0 +1,12 @@
+schema_version: 1
+fork: salma-remyx/transformers
+observed_landing_zones: []
+rejected_shapes:
+- shape_tag: null
+  reason_code: null
+  reason_summary: ''
+  observed:
+  - arxiv: 2409.08475v3
+    timestamp: '2026-08-06T08:46:37Z'
+coordination_signals: []
+last_updated: '2026-08-06T08:46:37Z'
