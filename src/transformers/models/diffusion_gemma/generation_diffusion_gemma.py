@@ -554,6 +554,7 @@ class DiffusionGemmaGenerationMixin:
         generation_config: DiffusionGemmaGenerationConfig | None = None,
         logits_processor: LogitsProcessorList | None = None,
         stopping_criteria: StoppingCriteriaList | None = None,
+        diffusion_stopping_criteria: DiffusionGemmaAdaptiveStopping | None = None,
         **kwargs,
     ) -> torch.LongTensor | DiffusionGemmaGenerationOutput:
         """
@@ -606,6 +607,11 @@ class DiffusionGemmaGenerationMixin:
                 from arguments and a generation config. If provided, these criteria will be first to be applied. This
                 feature is intended for advanced users. You can, for instance, pass here the stopping criteria commonly
                 used with AR LLMs.
+            diffusion_stopping_criteria ([`DiffusionGemmaAdaptiveStopping`], *optional*):
+                Custom per-canvas diffusion stopping strategy that overrides the [`StableAndConfidentStoppingCriteria`]
+                derived from `generation_config` (`stability_threshold` / `confidence_threshold`). Pass any
+                [`DiffusionGemmaAdaptiveStopping`] -- for example a candidate-aware criterion -- to plug in a custom
+                early-exit rule for the inner denoising loop.
             kwargs (`dict[str, Any]`, *optional*):
                 Ad hoc parametrization of `generation_config` and/or additional model-specific kwargs that will be
                 forwarded to the `forward` function of the model. For instance, you can set the starting canvas with
@@ -698,7 +704,9 @@ class DiffusionGemmaGenerationMixin:
         sampler = self._prepare_sampler(generation_config)
         logits_processor = self._prepare_logits_processor(generation_config, logits_processor)
         stopping_criteria = self._prepare_ar_stopping_criteria(generation_config, stopping_criteria)
-        diffusion_stopping_criteria = self._prepare_diffusion_stopping_criteria(generation_config)
+        diffusion_stopping_criteria = self._prepare_diffusion_stopping_criteria(
+            generation_config, diffusion_stopping_criteria
+        )
         if streamer is not None:
             streamer.put(input_ids.cpu())
 
@@ -1205,12 +1213,18 @@ class DiffusionGemmaGenerationMixin:
         return stopping_criteria
 
     def _prepare_diffusion_stopping_criteria(
-        self, generation_config: DiffusionGemmaGenerationConfig
-    ) -> StableAndConfidentStoppingCriteria | None:
+        self,
+        generation_config: DiffusionGemmaGenerationConfig,
+        diffusion_stopping_criteria: DiffusionGemmaAdaptiveStopping | None = None,
+    ) -> DiffusionGemmaAdaptiveStopping | None:
         """
         Prepares and returns the diffusion stopping criteria for generation, given the parameterization in
-        `generation_config`.
+        `generation_config`. A caller-supplied `diffusion_stopping_criteria` (any
+        [`DiffusionGemmaAdaptiveStopping`], e.g. a candidate-aware criterion) takes precedence and is returned
+        as-is, overriding the criteria otherwise derived from `generation_config`.
         """
+        if diffusion_stopping_criteria is not None:
+            return diffusion_stopping_criteria
         if generation_config.stability_threshold is not None and generation_config.confidence_threshold is not None:
             diffusion_stopping_criteria = StableAndConfidentStoppingCriteria(
                 stability_threshold=generation_config.stability_threshold,

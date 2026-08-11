@@ -31,6 +31,12 @@ if is_torch_available():
         LinearTemperatureScheduleLogitsProcessor,
         StableAndConfidentStoppingCriteria,
     )
+    from transformers.models.diffusion_gemma.candidate_verified_stopping import (
+        CandidateVerifiedStoppingCriteria,
+        DelimiterCandidateExtractor,
+        TailWindowCandidateExtractor,
+    )
+    from transformers.models.diffusion_gemma.generation_diffusion_gemma import DiffusionGemmaAdaptiveStopping
 
 
 @require_torch
@@ -251,6 +257,105 @@ class DiffusionGemmaGenerationClassesTester(unittest.TestCase):
         # If we pass a different canvas, the stability criteria will be set to false
         self.assertFalse(stopping_criteria_1(argmax_canvas=argmax_canvas_2, logits=logits).all())
         self.assertFalse(stopping_criteria_2(argmax_canvas=argmax_canvas_2, logits=logits).all())
+
+    def test_candidate_verified_criteria_is_adaptive_stopping(self):
+        """
+        `CandidateVerifiedStoppingCriteria` fulfills the `DiffusionGemmaAdaptiveStopping` contract, so it can be
+        passed straight to `generate(diffusion_stopping_criteria=...)`.
+        """
+        criteria = CandidateVerifiedStoppingCriteria(
+            stability_threshold=1, confidence_threshold=9.22, candidate_window=4
+        )
+        self.assertIsInstance(criteria, DiffusionGemmaAdaptiveStopping)
+        criteria.reset()  # stateful reset is part of the contract
+
+    def test_candidate_verified_stops_on_stable_candidate_when_full_canvas_is_not(self):
+        """
+        Core LATCH/CVC behaviour: the criterion stops once the candidate span has stabilized, even while the
+        prefix outside the span keeps churning -- where the whole-canvas `StableAndConfidentStoppingCriteria`
+        keeps denoising.
+        """
+        canvas_length = 10
+        # confidence threshold > ln(1/10000) ~= 9.21 -> uniform logits are "confident" for both criteria
+        confidence_threshold = 9.22
+        candidate_window = 3  # only the last 3 tokens form the candidate span
+
+        cvc = CandidateVerifiedStoppingCriteria(
+            stability_threshold=2, confidence_threshold=confidence_threshold, candidate_window=candidate_window
+        )
+        baseline = StableAndConfidentStoppingCriteria(stability_threshold=2, confidence_threshold=confidence_threshold)
+
+        logits = torch.zeros((1, canvas_length, 10000), device=torch_device)
+
+        # The candidate tail (last 3 tokens) stays fixed across all canvases; only the prefix churns.
+        canvas_a = torch.zeros((1, canvas_length), dtype=torch.long, device=torch_device)
+        canvas_b = canvas_a.clone()
+        canvas_b[0, : canvas_length - candidate_window] = torch.arange(
+            canvas_length - candidate_window, device=torch_device
+        )
+        canvas_c = canvas_b.clone()
+        canvas_c[0, 0] = 999  # yet another different prefix, same candidate tail
+
+        for canvas in (canvas_a, canvas_b):
+            cvc(argmax_canvas=canvas, logits=logits)
+            baseline(argmax_canvas=canvas, logits=logits)
+
+        cvc_stopped = cvc(argmax_canvas=canvas_c, logits=logits)
+        baseline_stopped = baseline(argmax_canvas=canvas_c, logits=logits)
+
+        # The candidate tail was stable across the last 2 steps -> CVC stops. The full canvas was not -> baseline
+        # does not.
+        self.assertTrue(cvc_stopped.all())
+        self.assertFalse(baseline_stopped.all())
+
+    def test_candidate_verified_does_not_stop_without_candidate(self):
+        """
+        Rows for which the extractor finds no candidate (e.g. a missing delimiter) never stop early, avoiding a
+        premature commit on an answer span that has not appeared yet.
+        """
+        # delimiter token 42 never appears -> empty candidate span
+        cvc = CandidateVerifiedStoppingCriteria(
+            stability_threshold=0,
+            confidence_threshold=9.22,
+            candidate_extractor=DelimiterCandidateExtractor(delimiter_token_id=42),
+        )
+        logits = torch.zeros((1, 8, 10000), device=torch_device)
+        canvas = torch.zeros((1, 8), dtype=torch.long, device=torch_device)
+        self.assertFalse(cvc(argmax_canvas=canvas, logits=logits).all())
+
+    def test_delimiter_candidate_extractor_mask(self):
+        """
+        `DelimiterCandidateExtractor` masks the tokens strictly after the *last* delimiter occurrence in each row,
+        and `TailWindowCandidateExtractor` masks the trailing `window` tokens.
+        """
+        # last delimiter at index 4 -> candidate span is indices 5, 6, 7
+        canvas = torch.tensor([[5, 42, 7, 8, 42, 9, 10, 11]])
+        mask = DelimiterCandidateExtractor(delimiter_token_id=42)(canvas)
+        self.assertEqual(mask.tolist(), [[False, False, False, False, False, True, True, True]])
+
+        # tail window of 3 -> last 3 positions
+        tail_mask = TailWindowCandidateExtractor(window=3)(canvas)
+        self.assertEqual(tail_mask.tolist(), [[False, False, False, False, False, True, True, True]])
+
+    def test_prepare_diffusion_stopping_criteria_honours_override(self):
+        """
+        Wiring check: `generate(diffusion_stopping_criteria=...)` is threaded through `_prepare_diffusion_stopping_criteria`,
+        so a caller-supplied adaptive stopping criterion takes precedence over the one derived from the generation
+        config.
+        """
+        mixin = DiffusionGemmaGenerationMixin()
+        custom = CandidateVerifiedStoppingCriteria(stability_threshold=1, confidence_threshold=0.1, candidate_window=4)
+
+        # The config would build its own criteria, but the explicit override wins.
+        config = DiffusionGemmaGenerationConfig(stability_threshold=2, confidence_threshold=0.2)
+        self.assertIs(mixin._prepare_diffusion_stopping_criteria(config, custom), custom)
+
+        # Without an override, the config-built default is returned.
+        default = mixin._prepare_diffusion_stopping_criteria(config, None)
+        self.assertIsInstance(default, StableAndConfidentStoppingCriteria)
+
+        # With neither override nor config thresholds, nothing is built.
+        self.assertIsNone(mixin._prepare_diffusion_stopping_criteria(DiffusionGemmaGenerationConfig(), None))
 
     def test_tokens_per_forward(self):
         """
