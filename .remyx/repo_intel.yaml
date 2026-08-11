@@ -1,6 +1,18 @@
 schema_version: 1
 fork: salma-remyx/transformers
-observed_landing_zones: []
+observed_landing_zones:
+- path: src/transformers/models/diffusion_gemma/
+  shape_tags:
+  - library-shape-public-api
+  confirmed_by:
+  - arxiv: 2607.28166v1
+    mode: Mode 2 (adapted port)
+    call_site_specifics: DiffusionGemmaGenerationMixin.generate() via the new diffusion_stopping_criteria
+      kwarg; threaded through _prepare_diffusion_stopping_criteria (override honored
+      at generation_diffusion_gemma.py:1226) a
+    branch: where-and-when-to-commit-candidate-aware-decoding-for-diffus
+    timestamp: '2026-08-11T07:45:11Z'
+  last_observed: '2026-08-11T07:45:11Z'
 rejected_shapes:
 - shape_tag: null
   reason_code: null
@@ -11,4 +23,4 @@ rejected_shapes:
   - arxiv: 2607.26627v1
     timestamp: '2026-08-08T06:56:55Z'
 coordination_signals: []
-last_updated: '2026-08-08T06:56:55Z'
+last_updated: '2026-08-11T07:45:11Z'
