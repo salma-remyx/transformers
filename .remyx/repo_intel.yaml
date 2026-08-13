@@ -12,7 +12,12 @@ observed_landing_zones:
       at generation_diffusion_gemma.py:1226) a
     branch: where-and-when-to-commit-candidate-aware-decoding-for-diffus
     timestamp: '2026-08-11T07:45:11Z'
-  last_observed: '2026-08-11T07:45:11Z'
+  - arxiv: 2607.29079v1
+    mode: ''
+    call_site_specifics: ''
+    branch: faster-but-different-diagnosing-and-controlling-content-drif
+    timestamp: '2026-08-13T07:45:27Z'
+  last_observed: '2026-08-13T07:45:27Z'
 rejected_shapes:
 - shape_tag: null
   reason_code: null
@@ -23,4 +28,4 @@ rejected_shapes:
   - arxiv: 2607.26627v1
     timestamp: '2026-08-08T06:56:55Z'
 coordination_signals: []
-last_updated: '2026-08-11T07:45:11Z'
+last_updated: '2026-08-13T07:45:27Z'
