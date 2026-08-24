@@ -47,3 +47,28 @@ def run_benchmark(logger: Logger, branch: str, commit_id: str, commit_msg: str, 
         },
     )
 ```
+
+## Cache-read traffic of short-conv/attention hybrids
+
+[`benches/kv_highway.py`](./benches/kv_highway.py) records the per-token cache-read
+traffic of an all-attention baseline against a hybrid that keeps full attention in
+only a third of its blocks, with short convolutions in the rest. It needs no GPU
+and no model download — the numbers come from the analytical cost model in
+[`kv_highway_cost.py`](./kv_highway_cost.py), which expresses the mechanism rather
+than measuring a particular host.
+
+Two things are worth reading out of it:
+
+- the **slope** (`slope_ratio`): the share of decode traffic that still grows with
+  context length. An all-attention model's slope is the whole KV cache; replacing
+  two thirds of the attention blocks with short convolutions cuts the slope to a
+  third while their own state stays constant, two timesteps wide, at any context
+  length.
+- the **speedup curve** (`traffic_speedup.N`): near-parity at an empty context and
+  widening with length. That shape is what separates the mechanism from a merely
+  smaller model — a leaner model scales the whole curve down, it does not change
+  how the curve grows.
+
+Adapted from *Daedalus-150M: A Convolution-Attention Hybrid Designed for CPU
+Inference* (arXiv:2608.20210).
+

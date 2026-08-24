@@ -20,7 +20,11 @@ import sys
 import uuid
 from datetime import datetime
 
-import pandas as pd
+try:
+    import pandas as pd
+except ImportError:  # only needed for CSV export, which is opt-in via --csv
+    pd = None
+    logging.getLogger(__name__).warning("pandas not available - CSV export disabled")
 
 
 try:
@@ -58,6 +62,9 @@ class MetricsRecorder:
         self.commit_id = commit_id
         self.commit_msg = commit_msg
         self.collect_csv_data = collect_csv_data
+        if self.collect_csv_data and pd is None:
+            self.logger.warning("pandas not installed - CSV export disabled")
+            self.collect_csv_data = False
 
         # For CSV export - store all data in pandas DataFrames (only if CSV collection is enabled)
         if self.collect_csv_data:
@@ -486,6 +493,15 @@ if __name__ == "__main__":
         except Exception as e:
             logger.error(f"error running benchmarks for {module_name}: {e}")
             failed_benchmarks += 1
+
+    # Print a comparison of the cache-read traffic the benches measured against
+    # what the analytical model in `kv_highway_cost` predicts.
+    try:
+        from kv_highway_cost import compare_to_predictions
+
+        compare_to_predictions(logger)
+    except Exception as e:
+        logger.debug(f"skipping analytical comparison: {e}")
 
     # Export CSV results at the end (if enabled)
     try:
