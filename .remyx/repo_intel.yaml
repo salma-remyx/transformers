@@ -18,6 +18,18 @@ observed_landing_zones:
     branch: faster-but-different-diagnosing-and-controlling-content-drif
     timestamp: '2026-08-13T07:45:27Z'
   last_observed: '2026-08-13T07:45:27Z'
+- path: benchmark/
+  shape_tags:
+  - unclassified
+  confirmed_by:
+  - arxiv: 2608.20210v1
+    mode: Mode 2 (adapted port)
+    call_site_specifics: "benchmark/benchmarks_entrypoint.py \u2014 the pre-existing\
+      \ __main__ auto-discovery loop imports every module in benches/ exposing run_benchmark\
+      \ (so benches/kv_highway.py runs on every harness invocation), "
+    branch: daedalus-150m-a-convolution-attention-hybrid-designed-for-cp
+    timestamp: '2026-08-24T07:39:04Z'
+  last_observed: '2026-08-24T07:39:04Z'
 rejected_shapes:
 - shape_tag: null
   reason_code: null
@@ -32,4 +44,4 @@ rejected_shapes:
   - arxiv: 2608.19758v1
     timestamp: '2026-08-23T06:52:02Z'
 coordination_signals: []
-last_updated: '2026-08-23T06:52:02Z'
+last_updated: '2026-08-24T07:39:04Z'
